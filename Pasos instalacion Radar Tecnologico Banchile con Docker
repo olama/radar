@@ -1,0 +1,136 @@
+Pasos para levantar el Radar tecnologico Banchile (power by thougtworks)
+----------------------------------------
+Referencia: 
+1. https://github.com/thoughtworks/build-your-own-radar
+2. https://hub.docker.com/_/httpd
+
+Prerequisitos: 
+- Docker engine xx
+
+OPCION 1: Crear un 
+1. Instalacion de radar thougthworks via contenedor docker
+
+$ docker run -dit --name my-running-app -p 8081:80 debian
+docker exec -it my-running-app /bin/bash
+apt-get update
+apt-get install -y apache2
+service apache2 status
+docker cp radar.csv my-running-app:/var/www/html/radar.csv 
+docker cp  apache2.conf  my-running-app:/etc/apache2/apache2.conf                  
+a2enmod headers
+service apache2 restart
+docker exec -it my-running-app service apache2 restart
+
+Notas:
+---------- se agrega en apache2.conf  --------
+ <Directory /var/www/>
+        Options Indexes FollowSymLinks
+        AllowOverride None
+        Require all granted
+        Header set Access-Control-Allow-Origin "*"
+</Directory> 
+
+----------
+
+
+OPCION 2: Agregar servidor apache al contender radar en otro puerto(8081)
+docker exec -it great_yonath /bin/bash
+apt-get update
+apt-get install -y apache2
+apt-get install -y vim
+vim /etc/apache2/ports.conf (cambiar puerto 80 por 81)
+service apache2 restart 
+service apache2 status     
+docker cp  apache2.conf great_yonath:/etc/apache2/apache2.conf  
+docker stop great_yonath
+
+AGREGAMOS AL CONTENEDOR RADAR UN NUEVO APACHE 
+docker run --rm -p 8080:80 -p 8081:81 --name great_yonath -e SERVER_NAMES="localhost 127.0.0.1" wwwthoughtworks/build-your-own-radar
+docker exec -it great_yonath apt-get update && docker exec -it great_yonath apt-get install -y apache2 && docker exec -it great_yonath apt-get install -y vim
+docker cp radar.csv great_yonath:/var/www/html/radar.csv 
+docker cp  apache2.conf  great_yonath:/etc/apache2/apache2.conf   
+docker exec -it great_yonath a2enmod headers
+docker exec -it great_yonath service apache2 restart
+docker exec -it great_yonath ls /var/www/html
+
+
+PARA CREAR UN IMAGEN A PARTIR DE UN CONTENEDOR
+referencia:https://www.scalyr.com/blog/create-docker-image/
+
+Dado que queremos persistir el nuevo contenedor, con el binario radar y servidor apache, debemos crear una nueva imagen a partir del contenedor en ejecucion.
+1. Vemos que contenedor vamos a usar como base , en este caso "great_yonath".
+MacBook-Pro-de-Oscar:radar_tecnologico oscarlama$ docker ps
+CONTAINER ID        IMAGE                                  COMMAND                  CREATED             STATUS              PORTS                                        NAMES
+66feb058067a        wwwthoughtworks/build-your-own-radar   "nginx -g 'daemon of…"   29 minutes ago      Up 29 minutes       0.0.0.0:8080->80/tcp, 0.0.0.0:8081->81/tcp   great_yonath
+MacBook-Pro-de-Oscar:radar_tecnologico oscarlama$
+
+2.Creamos una imagen a partir de un contenedor
+MacBook-Pro-de-Oscar:radar_tecnologico oscarlama$ docker commit great_yonath
+sha256:e98a0041bc4d29dcbffe2206f860829ad49675a391bb4a35569714d91043aca0
+
+3.Validamos la creacion del contenedor
+MacBook-Pro-de-Oscar:radar_tecnologico oscarlama$ docker image ls
+REPOSITORY                                              TAG                    IMAGE ID            CREATED             SIZE
+<none>                                                  <none>                 e98a0041bc4d        25 seconds ago      225MB
+
+4.Tageamos la nueva imagen para encontrarla posteriormente
+docker tag e98a0041bc4d radar_tecnologico_bi
+
+5.Ejecutamos el nuevo contenedor
+docker run --rm -p 8080:80 -p 8081:81 --name radar -e SERVER_NAMES="localhost 127.0.0.1"   radar_tecnologico_bi
+ docker exec -it radar /bin/bash
+                                                           
+NOTAS:
+1. Para agregar  un comentario
+docker commit --message 'Version 1.0.0'  great_yonath
+docker tag e98a0041bc4d  
+2. Para ver procesos del contenedor
+docker top radar
+
+VALIDAMOS LA CREACION DE LA NUEVA IMAGEN CON EL RADAR Y SERVIDOR APACHE
+docker run --rm -p 8080:80 -p 8081:81 --name radar -e SERVER_NAMES="localhost 127.0.0.1"  radar_tecnologico_banchile
+
+NOTA: Se soluciono dejando apache2 en boot debian con la herramienta "rcconf" (referencia https://unix.stackexchange.com/questions/33793/how-to-auto-start-a-service-apache2-with-linux-mint)
+ sudo apt-get install rcconf
+ sudo rcconf
+
+PUSH DE LA IMAGE LOCAL DE LA IMAGEN DEL CONTENEDOR A DOCKER HUB
+
+1. Nos logeamos en docker hub utilizando un token "f8cd2ec2-de0f-418c-b610-687074f9143e" creado en el sitio docker hub.
+docker login --username olama
+
+2.Tageamos la image indicando la cuenta.
+docker tag bb38976d03cf yourhubusername/verse_gapminder:firsttry
+docker tag radar-tecnologico-banchile olama/radar-tecnologico-banchile:v1.0.0
+
+3.Push de la image tageada
+docker push yourhubusername/verse_gapminder
+docker push olama/radar-tecnologico-banchile
+
+DESCARGA DE LA IMAGEN RADAR BANCHILE V1.0..0, SUBIDA A DOCKER HUB y EJECUTAR
+docker pull olama/radar-tecnologico-banchile:v1.0.0
+docker run --rm -p 8080:80 -p 8081:81 --name radar -e SERVER_NAMES="localhost 127.0.0.1"  olama/radar-tecnologico-banchile:v1.0.0
+En el navegador escribir: http://localhost:8080/?sheetId=http%3A%2F%2Flocalhost%3A8081%2Fradar.csv
+
+PARA RESPALDAR LA IAMGEN EN UN ARCHIVO TAR
+To save a Docker image after you have pulled, committed or built it you use the docker save command. For example, lets save a local copy of the verse_gapminder docker image we made:
+
+docker save verse_gapminder > verse_gapminder.tar
+If we want to load that Docker container from the archived tar file in the future, we can use the docker load command:
+
+docker load --input verse_gapminder.tar
+
+COMPRESION EN MULTIPLES PARTES CON TAR
+tar -cvzf olama_radar-tecnologico-banchile_v1.0.0.tar.gz olama_radar-tecnologico-banchile_v1.0.0
+
+zip -r -s 45 olama_radar-tecnologico-banchile_v1.0.0.tar.gz.zip olama_radar-tecnologico-banchile_v1.0.0.tar.gz
+ 
+DESCOMPRIMIR ARCHIVO ZIP Y TAR GZ
+unzip file
+tar -xvf file
+
+
+TORUBLESHOOTING
+1. No parte servidor apache
+docker exec -it radar service apache2 status
+docker exec -it radar service apache2 start
